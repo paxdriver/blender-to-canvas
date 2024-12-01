@@ -6,11 +6,12 @@ async function get_model_data(){
 
 // GLOBAL VARIABLES TO TWEAK AND ALTER DEPENDING ON USE CASE
 const BUFFER_SIZE = 4
-const [WIDTH, HEIGHT, SIZE] = [800, 800, 100]
-const CAMERA_POSITION = [0, 0, 10]
-const BASIC_MINIMUM = 0.00000001
-const INTEGER_CONVERSION_SCALE_FACTOR = 1
+const [WIDTH, HEIGHT, SIZE] = [1000, 1500, 100]
+const CAMERA_POSITION = [0, 0, 0]
+const BASIC_MINIMUM = 0.00000000001
+const INTEGER_CONVERSION_SCALE_FACTOR = 2
 const DOT_SIZE = 20
+const MIN_DOT_SIZE = 5
 // ---------------------------------------------------------
 
 // initialize the canvas and page
@@ -33,13 +34,12 @@ function drawLineFromTo(a, b){ // a and b are arrays [x,y,z]
     ctx.stroke()
 }
 function drawVerts(x, y, scaleFactor){
-    console.log(x, y, scaleFactor) // getting 0, 0, undefined!!! I'VE MADE AN ERROR SOMEWHERE WHEN THIS IS CALLED
     let _dot_size = DOT_SIZE * scaleFactor
-    if (_dot_size < 2) _dot_size = 2
+    if (_dot_size < MIN_DOT_SIZE) _dot_size = MIN_DOT_SIZE
     ctx.beginPath()
     ctx.arc(x*SIZE, y*SIZE, _dot_size, 0, 2 * Math.PI)
     ctx.fillStyle = 'green'
-    ctx.fill()
+    // ctx.fill()
     ctx.stroke()
 }
 
@@ -58,6 +58,10 @@ class BufferedData{
     constructor(bufferLength) {
         this.buffer = new ArrayBuffer(bufferLength)
         this.view = new Float32Array(this.buffer)
+        this._tmpBuffer = new ArrayBuffer(bufferLength)
+        this._tmp = new Float32Array(this._tmpBuffer)
+        this._rotationsBuffer = new ArrayBuffer(bufferLength)
+        this.rotations = new Float32Array(this._rotationsBuffer)
     }
     // handle values to avoid 0 values
     checkForZeros() { 
@@ -71,32 +75,49 @@ class BufferedData{
         this.view[0] = x
         this.view[1] = y
         this.view[2] = z
+        this.rotations = [0.0, 0.0, 0.0]
     }
     // returns canvas-friendly integer value
     getX(scaleFactor){
-        let output = Math.round(this.view[0] * INTEGER_CONVERSION_SCALE_FACTOR * scaleFactor)
-        this.computed_view[0] = output
+        let xValue = this._tmp[0] || this.view[0]
+        this.computed_view[0] = Math.round(xValue * INTEGER_CONVERSION_SCALE_FACTOR * scaleFactor)
     }
-    getY(scaleFactor){ 
-        this.computed_view[1] = Math.round(this.view[1] * INTEGER_CONVERSION_SCALE_FACTOR * scaleFactor)
+    getY(scaleFactor){
+        let yValue = this._tmp[1] || this.view[1]
+        this.computed_view[1] = Math.round(yValue * INTEGER_CONVERSION_SCALE_FACTOR * scaleFactor)
+    }
+    getZ(){ // //DEV NOTE: don't need this right now
+        // let zValue = this._tmp[2] || this.view[2]
     }
     updateCoordsWithDepthFactor(scaleFactor){
         this.getX(scaleFactor)
         this.getY(scaleFactor)
-    }
-    // WORK IN PROGRESS!!! TRYING MANUAL ROTATION TO MAKE SURE POINTS AND EDGES ARE BEING PLOTTED AS EXPECTED. HARD TO TELL FROM FACE-ON VIEW
-    rotateY(amt){
-        let x = this.view[2] / this.view[0]
-        x *= Math.cos(amt) + this.view[0]
-        this.view[0] = x
-        this.computed_view[0] = Math.round(x)
-
-        let z = this.view[0] / this.view[2]
-        z *= -Math.sin(amt) + this.view[0]
-        this.view[2]
-        this.computed_view[2] = Math.round(z)
+        console.log(this.computed_view)
     }
 
+    rotateX(angle){
+        let yValue = this._tmp[1] || this.view[1]
+        let zValue = this._tmp[2] || this.view[2]
+        this._tmp[1] = (yValue * Math.cos(angle)) + (zValue * Math.sin(angle))
+        this._tmp[2] = (zValue * Math.cos(angle)) - (yValue * Math.sin(angle))
+    }
+    rotateY(angle){
+        let xValue = this._tmp[0] || this.view[0]
+        let zValue = this._tmp[2] || this.view[2]
+        this._tmp[0] = (xValue * Math.cos(angle)) + (zValue * Math.sin(angle))
+        this._tmp[2] = (zValue * Math.cos(angle)) - (xValue * Math.sin(angle))
+    }
+    rotateZ(angle){
+        let xValue = this._tmp[0] || this.view[0]
+        let yValue = this._tmp[1] || this.view[1]
+        this._tmp[0] = (xValue * Math.cos(angle)) - (yValue * Math.sin(angle))
+        this._tmp[1] = (xValue * Math.sin(angle)) + (yValue * Math.cos(angle))
+    }
+    applyRotations(){
+        if (this.rotations[0] !== 0) this.rotateX(this.rotations[0])
+        if (this.rotations[1] !== 0) this.rotateY(this.rotations[1])
+        if (this.rotations[2] !== 0) this.rotateZ(this.rotations[2])
+    }
 }
 // VERT CLASS - inherits array buffer of typed arrays, compute functions, and update functions
 class Vert extends BufferedData {
@@ -140,19 +161,19 @@ function calculate_scale_factor(all_vertices){  // WORK IN PROGRESS!!!!
     }
 
     all_vertices.forEach( vert => {
-        vert.checkForZeros()
         if (vert.view[2] < minmaxZ.min) minmaxZ.min = vert.view[2]
         if (vert.view[2] > minmaxZ.max) minmaxZ.max = vert.view[2]
     })
     all_vertices.forEach( vert => {
+        let scaleFactor = 1
         if (minmaxZ.min == minmaxZ.max) {
-            vert.updateCoordsWithDepthFactor(1)
+            vert.scaleFactor = scaleFactor
         } else {
             const zRange = minmaxZ.max - minmaxZ.min
             const zNormalized = (vert.view[2] - minmaxZ.min) / zRange     // normalize z to 0 - 1
             const scaleFactor = 1 / (1 + zNormalized)
+            vert.scaleFactor = scaleFactor
             console.log(scaleFactor)
-            vert.updateCoordsWithDepthFactor(scaleFactor)
         }
     })
 }
@@ -166,19 +187,24 @@ async function main(){
     // Get depth based on min/max depth of all Vert objects and assign integer values to array buffer of integers in Vert.computed_view[0] and Vert.computed_view[1]
     calculate_scale_factor(all_vertices)
 
-
-    //                  WORK IN PROGRESS
     // this will be for applying rotations, translations, etc later...
     const all_edges = map_edges(edges, all_vertices) // array of all edges connecting 2 Vert objects
 
+
+    let counter = 0.0001
     // find range of depth to scale coordinates (smaller change for further away)
     function render(){
+        ctx.clearRect(-WIDTH, -HEIGHT, WIDTH*2, HEIGHT*2)
 
         all_vertices.forEach( vertex => {
             // apply test rotation of 1/4 PI to update computed points and view points
-            vertex.rotateY(0.25 * Math.PI)
+            vertex.rotations[1] = (counter * Math.PI)
+            counter += 0.000001
+            vertex.applyRotations()
         })
+
         calculate_scale_factor(all_vertices) // recalculate the scaleFactor and store it in each instance's scaleFactor
+
         all_vertices.forEach( vertex => {
             // update x,y,z coordinates with new values from the rotation
             vertex.updateCoordsWithDepthFactor(vertex.scaleFactor)
@@ -193,6 +219,8 @@ async function main(){
         all_vertices.forEach( v => {
             drawVerts(v.computed_view[0], v.computed_view[1], v.scaleFactor)
         })
+
+        console.log(all_vertices[all_vertices.length-1])
 
         // requestAnimationFrame(render)
     }
