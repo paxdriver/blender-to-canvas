@@ -6,12 +6,12 @@ async function get_model_data(){
 
 // GLOBAL VARIABLES TO TWEAK AND ALTER DEPENDING ON USE CASE
 const BUFFER_SIZE = 4
-const [WIDTH, HEIGHT, SIZE] = [1000, 1500, 100]
+const [WIDTH, HEIGHT, SIZE] = [1000, 1250, 100]
 const CAMERA_POSITION = [0, 0, 0]
-const BASIC_MINIMUM = 0.00000000001
+const BASIC_MINIMUM = 0.0000000001
 const INTEGER_CONVERSION_SCALE_FACTOR = 2
 const DOT_SIZE = 20
-const MIN_DOT_SIZE = 5
+const MIN_DOT_SIZE = 2
 // ---------------------------------------------------------
 
 // initialize the canvas and page
@@ -89,10 +89,10 @@ class BufferedData{
     getZ(){ // //DEV NOTE: don't need this right now
         // let zValue = this._tmp[2] || this.view[2]
     }
-    updateCoordsWithDepthFactor(scaleFactor){
-        this.getX(scaleFactor)
-        this.getY(scaleFactor)
-        console.log(this.computed_view)
+    updateCoordsWithDepthFactor(){
+        this.getX(this.scaleFactor)
+        this.getY(this.scaleFactor)
+        // console.log(this.computed_view)
     }
 
     rotateX(angle){
@@ -191,23 +191,30 @@ async function main(){
     const all_edges = map_edges(edges, all_vertices) // array of all edges connecting 2 Vert objects
 
 
-    let counter = 0.0001
+    let counter = 0.000001
+    let stop = false
     // find range of depth to scale coordinates (smaller change for further away)
     function render(){
         ctx.clearRect(-WIDTH, -HEIGHT, WIDTH*2, HEIGHT*2)
 
         all_vertices.forEach( vertex => {
             // apply test rotation of 1/4 PI to update computed points and view points
-            vertex.rotations[1] = (counter * Math.PI)
-            counter += 0.000001
-            vertex.applyRotations()
+            if (!stop){
+                vertex.rotations[0] = (counter * Math.PI)
+                vertex.rotations[1] = ((counter-0.01) * Math.PI)
+                // vertex.rotations[2] = (counter * Math.PI)
+                if (counter > 2) counter = 0
+                counter += 0.0000001
+                vertex.applyRotations()
+                // console.log(vertex)
+            }
         })
 
         calculate_scale_factor(all_vertices) // recalculate the scaleFactor and store it in each instance's scaleFactor
 
         all_vertices.forEach( vertex => {
             // update x,y,z coordinates with new values from the rotation
-            vertex.updateCoordsWithDepthFactor(vertex.scaleFactor)
+            vertex.updateCoordsWithDepthFactor()
         })
 
         // edges are all already just references to the Vert objects, so those updates will be live and good still
@@ -220,7 +227,7 @@ async function main(){
             drawVerts(v.computed_view[0], v.computed_view[1], v.scaleFactor)
         })
 
-        console.log(all_vertices[all_vertices.length-1])
+        // console.log(all_vertices[all_vertices.length-1])
 
         // requestAnimationFrame(render)
     }
