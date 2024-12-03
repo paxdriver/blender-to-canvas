@@ -9,8 +9,9 @@ const BUFFER_SIZE = 4
 const [WIDTH, HEIGHT, SIZE] = [1000, 1250, 100]
 const CAMERA_POSITION = [0, 0, 0]
 const BASIC_MINIMUM = 0.0000000001
-const INTEGER_CONVERSION_SCALE_FACTOR = 2
-const DOT_SIZE = 20
+const INTEGER_CONVERSION_SCALE_FACTOR = 1.5
+const DEPTH_SCALING_CONSTANT = 0.25
+const DOT_SIZE = 50
 const MIN_DOT_SIZE = 2
 // ---------------------------------------------------------
 
@@ -34,7 +35,7 @@ function drawLineFromTo(a, b){ // a and b are arrays [x,y,z]
     ctx.stroke()
 }
 function drawVerts(x, y, scaleFactor){
-    let _dot_size = DOT_SIZE * scaleFactor
+    let _dot_size = DOT_SIZE * (scaleFactor*DEPTH_SCALING_CONSTANT)
     if (_dot_size < MIN_DOT_SIZE) _dot_size = MIN_DOT_SIZE
     ctx.beginPath()
     ctx.arc(x*SIZE, y*SIZE, _dot_size, 0, 2 * Math.PI)
@@ -75,7 +76,7 @@ class BufferedData{
         this.view[0] = x
         this.view[1] = y
         this.view[2] = z
-        this.rotations = [0.0, 0.0, 0.0]
+        this.rotations = [0.0, 0.01, 0.0]
     }
     // returns canvas-friendly integer value
     getX(scaleFactor){
@@ -92,22 +93,26 @@ class BufferedData{
     updateCoordsWithDepthFactor(){
         this.getX(this.scaleFactor)
         this.getY(this.scaleFactor)
-        // console.log(this.computed_view)
     }
 
     rotateX(angle){
+        console.log(`X: ${angle}`)
         let yValue = this._tmp[1] || this.view[1]
         let zValue = this._tmp[2] || this.view[2]
         this._tmp[1] = (yValue * Math.cos(angle)) + (zValue * Math.sin(angle))
         this._tmp[2] = (zValue * Math.cos(angle)) - (yValue * Math.sin(angle))
     }
     rotateY(angle){
+        console.log(`Y: ${angle}`)
         let xValue = this._tmp[0] || this.view[0]
         let zValue = this._tmp[2] || this.view[2]
         this._tmp[0] = (xValue * Math.cos(angle)) + (zValue * Math.sin(angle))
         this._tmp[2] = (zValue * Math.cos(angle)) - (xValue * Math.sin(angle))
+        console.log(`X: ${this._tmp[0]}`)
+        console.log(`Z: ${this._tmp[2]}`)
     }
     rotateZ(angle){
+        console.log(`Z: ${angle}`)
         let xValue = this._tmp[0] || this.view[0]
         let yValue = this._tmp[1] || this.view[1]
         this._tmp[0] = (xValue * Math.cos(angle)) - (yValue * Math.sin(angle))
@@ -171,43 +176,33 @@ function calculate_scale_factor(all_vertices){  // WORK IN PROGRESS!!!!
         } else {
             const zRange = minmaxZ.max - minmaxZ.min
             const zNormalized = (vert.view[2] - minmaxZ.min) / zRange     // normalize z to 0 - 1
-            const scaleFactor = 1 / (1 + zNormalized)
+            let scaleFactor = 1 / (1 + zNormalized)
+            scaleFactor += DEPTH_SCALING_CONSTANT
             vert.scaleFactor = scaleFactor
-            console.log(scaleFactor)
         }
     })
 }
 
-
+// ENTRY POINT
 async function main(){
     const data = await get_model_data()
     const {vertices, edges} = data
+    
     // Map data as float32 array buffer values in Vert class objects
     const all_vertices = map_verts(vertices) // array of all Vert objects
-    // Get depth based on min/max depth of all Vert objects and assign integer values to array buffer of integers in Vert.computed_view[0] and Vert.computed_view[1]
+    
+    // Get depth based on min/max depth of all Vert objects, then store the scale factor based on the range of all z values, but specific to each Vert and assign that value to the Vert objects one-by-one
     calculate_scale_factor(all_vertices)
 
     // this will be for applying rotations, translations, etc later...
     const all_edges = map_edges(edges, all_vertices) // array of all edges connecting 2 Vert objects
 
-
-    let counter = 0.000001
-    let stop = false
     // find range of depth to scale coordinates (smaller change for further away)
     function render(){
         ctx.clearRect(-WIDTH, -HEIGHT, WIDTH*2, HEIGHT*2)
 
         all_vertices.forEach( vertex => {
-            // apply test rotation of 1/4 PI to update computed points and view points
-            if (!stop){
-                vertex.rotations[0] = (counter * Math.PI)
-                vertex.rotations[1] = ((counter-0.01) * Math.PI)
-                // vertex.rotations[2] = (counter * Math.PI)
-                if (counter > 2) counter = 0
-                counter += 0.0000001
-                vertex.applyRotations()
-                // console.log(vertex)
-            }
+            vertex.applyRotations()
         })
 
         calculate_scale_factor(all_vertices) // recalculate the scaleFactor and store it in each instance's scaleFactor
@@ -228,12 +223,10 @@ async function main(){
         })
 
         // console.log(all_vertices[all_vertices.length-1])
-
-        // requestAnimationFrame(render)
+        requestAnimationFrame(render)
     }
 
     render()
-
 }
 
 main()
