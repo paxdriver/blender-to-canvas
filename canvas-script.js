@@ -46,7 +46,7 @@ mouse.fill(1)
 let debounceTimeout = null  // the timeout container, used as a shared reference to be cleared to avoid overlapping / race conditions
 
 // reset debouncing flag in debounceTimeout
-function resetBounce(){ mouse[4] = 0 }
+function resetBounce(){ mouse[4] = 1 }
 
 // Listener for tracking mouse movements to apply rotational changes to the mesh
 body.addEventListener( 'mousemove', e => {
