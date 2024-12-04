@@ -40,19 +40,18 @@ ctx.translate(WIDTH/2, HEIGHT/2)
 // Get mouse movements with a debouncer so as not to clobber the engine with event callbacks.
 const body = document.getElementsByTagName('body')[0]
 const DEBOUNCER_DELAY = 300
-const mouse_buffer = new ArrayBuffer(4) // [x, y, previous_x, previous_y]
+const mouse_buffer = new ArrayBuffer(5) // [x, y, previous_x, previous_y, bounce_flag_boolean]
 let mouse = new Int16Array(mouse_buffer)
 mouse.fill(1)
 let debounceTimeout = null  // the timeout container, used as a shared reference to be cleared to avoid overlapping / race conditions
-let bounce = true
 
 // reset debouncing flag in debounceTimeout
-function resetBounce(){ bounce = true }
+function resetBounce(){ mouse[4] = 0 }
 
 // Listener for tracking mouse movements to apply rotational changes to the mesh
 body.addEventListener( 'mousemove', e => {
     if (bounce) {
-        bounce = false
+        mouse[4] = 0    // bounce flag
         mouse[2] = mouse[0] 
         mouse[3] = mouse[1]
         mouse[0] = e.clientX
