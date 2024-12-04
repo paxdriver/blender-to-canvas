@@ -50,7 +50,7 @@ function resetBounce(){ mouse[4] = 0 }
 
 // Listener for tracking mouse movements to apply rotational changes to the mesh
 body.addEventListener( 'mousemove', e => {
-    if (bounce) {
+    if (mouse[4]) {
         mouse[4] = 0    // bounce flag
         mouse[2] = mouse[0] 
         mouse[3] = mouse[1]
