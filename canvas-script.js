@@ -7,7 +7,8 @@ async function get_model_data(){
 }
 
 // DEV ONLY -------------------------  ANIMATION ON/OFF TOGGLE
-const animate = 1
+let animate = 0
+setTimeout( () => animate = 0, 23000)
 // DEV ONLY -------------------------  ANIMATION ON/OFF TOGGLE
 
 // GLOBAL VARIABLES TO TWEAK AND ALTER DEPENDING ON USE CASE
@@ -33,6 +34,36 @@ canvas.width = WIDTH
 canvas.height = HEIGHT
 const ctx = canvas.getContext('2d')
 ctx.translate(WIDTH/2, HEIGHT/2)
+
+
+// SETUP MOUSE MOVEMENT TRACKING
+// Get mouse movements with a debouncer so as not to clobber the engine with event callbacks.
+const body = document.getElementsByTagName('body')[0]
+const DEBOUNCER_DELAY = 300
+const mouse_buffer = new ArrayBuffer(4) // [x, y, previous_x, previous_y]
+let mouse = new Int16Array(mouse_buffer)
+mouse.fill(1)
+let debounceTimeout = null  // the timeout container, used as a shared reference to be cleared to avoid overlapping / race conditions
+let bounce = true
+
+// reset debouncing flag in debounceTimeout
+function resetBounce(){ bounce = true }
+
+// Listener for tracking mouse movements to apply rotational changes to the mesh
+body.addEventListener( 'mousemove', e => {
+    if (bounce) {
+        bounce = false
+        mouse[2] = mouse[0] 
+        mouse[3] = mouse[1]
+        mouse[0] = e.clientX
+        mouse[1] = e.clientY
+        console.log(mouse)
+        
+        clearTimeout(debounceTimeout)   // clear existing timeouts before setting the latest one
+        debounceTimeout = setTimeout( resetBounce, DEBOUNCER_DELAY )
+    }
+} )
+// -----------------------------
 
 // Rendering datapoints to canvas from edges and verts
 function drawLineFromTo(a, b){ // a and b are arrays [x,y,z]
@@ -65,7 +96,7 @@ function setScaleFactor(z){
     let scaleFactor = BASIC_MINIMUM
     if (minmaxZ.min !== minmaxZ.max) { // prevent divide by zero
         const zRange = minmaxZ.max - minmaxZ.min
-        const zNormalized = (z - minmaxZ.min !== 0) ? (z - minmaxZ.min) / zRange : 1 / BASIC_MINIMUM
+        const zNormalized = (z - minmaxZ.min !== 0) ? (z - minmaxZ.min) / zRange : BASIC_MINIMUM
         scaleFactor = 1 / (1 + zNormalized)
         scaleFactor += DEPTH_SCALING_CONSTANT
     }
@@ -86,7 +117,7 @@ class BufferedData{
         this.view[0] = x
         this.view[1] = y
         this.view[2] = z
-        this.rotations = [0.0, 0.02, 0.0]
+        this.rotations = [0.025, 0.04, 0.05]
         this.scaleFactor = setScaleFactor(z)
     }
     // returns HTML canvas-friendly integer value
@@ -209,8 +240,8 @@ async function main(){
             }
         })
         
+        // update x,y,z coordinates with new values from the rotation
         all_vertices.forEach( vertex => {
-            // update x,y,z coordinates with new values from the rotation
             vertex.updateCoordsWithDepthFactor()
         })
 
@@ -224,9 +255,11 @@ async function main(){
             drawVerts(v.computed_view[0], v.computed_view[1], v.scaleFactor)
         })
 
+        
         if (animate) requestAnimationFrame(render)
     }
-
+    
+    console.log(all_vertices[all_vertices.length-1])
     render()
 }
 
