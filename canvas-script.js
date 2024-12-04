@@ -7,7 +7,7 @@ async function get_model_data(){
 }
 
 // DEV ONLY -------------------------  ANIMATION ON/OFF TOGGLE
-let animate = 0
+let animate = 1
 setTimeout( () => animate = 0, 23000)
 // DEV ONLY -------------------------  ANIMATION ON/OFF TOGGLE
 
@@ -36,13 +36,16 @@ const ctx = canvas.getContext('2d')
 ctx.translate(WIDTH/2, HEIGHT/2)
 
 
-// SETUP MOUSE MOVEMENT TRACKING
+// SETUP MOUSE MOVEMENT TRACKING --------------------------------
+
 // Get mouse movements with a debouncer so as not to clobber the engine with event callbacks.
 const body = document.getElementsByTagName('body')[0]
 const DEBOUNCER_DELAY = 300
-const mouse_buffer = new ArrayBuffer(5) // [x, y, previous_x, previous_y, bounce_flag_boolean]
+// DEV NOTE: Int16 uses 2 bytes per element, so 4 coordinate elements and one bounce flag -> 5 * 2
+const mouse_buffer = new ArrayBuffer(10) // [x, y, previous_x, previous_y, bounce_flag_boolean]
 let mouse = new Int16Array(mouse_buffer)
 mouse.fill(1)
+console.log(mouse)
 let debounceTimeout = null  // the timeout container, used as a shared reference to be cleared to avoid overlapping / race conditions
 
 // reset debouncing flag in debounceTimeout
@@ -50,7 +53,7 @@ function resetBounce(){ mouse[4] = 1 }
 
 // Listener for tracking mouse movements to apply rotational changes to the mesh
 body.addEventListener( 'mousemove', e => {
-    if (mouse[4]) {
+    if (mouse[4] !== 0) {
         mouse[4] = 0    // bounce flag
         mouse[2] = mouse[0] 
         mouse[3] = mouse[1]
@@ -62,7 +65,7 @@ body.addEventListener( 'mousemove', e => {
         debounceTimeout = setTimeout( resetBounce, DEBOUNCER_DELAY )
     }
 } )
-// -----------------------------
+// --------- END MOUSE TRACKING ----------------------------------
 
 // Rendering datapoints to canvas from edges and verts
 function drawLineFromTo(a, b){ // a and b are arrays [x,y,z]
