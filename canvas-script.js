@@ -12,14 +12,18 @@ setTimeout( () => animate = 0, 23000)
 // DEV ONLY -------------------------  ANIMATION ON/OFF TOGGLE
 
 // GLOBAL VARIABLES TO TWEAK AND ALTER DEPENDING ON USE CASE
-// const CAMERA_POSITION = [0, 0, 0]
+// const CAMERA_POSITION = [0, 0, 0]    // for later
 const BUFFER_SIZE = 4
 const [WIDTH, HEIGHT, SIZE] = [500, 500, 2]
 const BASIC_MINIMUM = 0.0000000000000001
-const INTEGER_CONVERSION_SCALE_FACTOR = 10
-const DEPTH_SCALING_CONSTANT = 1.75
-const DOT_SIZE = 5
-const MIN_DOT_SIZE = 1
+            // DEV NOTE: consider making conversion scaler more dynamic, based on the canvas size or something...
+const INT_CONVERSION_SCALER = 10        // coords imported by Blender need to be scaled to pixel values
+const DEPTH_SCALER = 1.75               // kind of like aperture or depth of field
+const DOT_SIZE = 5                      // dots or points plotted on each Vert
+const MIN_DOT_SIZE = 1                  // minimum dot radius, as they are scaled based on z values
+const DEBOUNCER_DELAY = 300             // delay in miliseconds between mouse movement events to recalculate the mesh
+const MAX_ROTATION_SPEED = 0.05         // this is the max speed of rotation per axis
+const ROTATION_SENSITIVITY = 10000        // this is the divisor applied to mouse coordinates to compute rotation speed
 // ---------------------------------------------------------
 let minmaxZ = {min: 1, max: 1}  // initialized value, will be updated when Vert class objects get created.
 // ---------------------------------------------------------
@@ -35,38 +39,6 @@ canvas.height = HEIGHT
 const ctx = canvas.getContext('2d')
 ctx.translate(WIDTH/2, HEIGHT/2)
 
-
-// SETUP MOUSE MOVEMENT TRACKING --------------------------------
-
-// Get mouse movements with a debouncer so as not to clobber the engine with event callbacks.
-const body = document.getElementsByTagName('body')[0]
-const DEBOUNCER_DELAY = 300
-// DEV NOTE: Int16 uses 2 bytes per element, so 4 coordinate elements and one bounce flag -> 5 * 2
-const mouse_buffer = new ArrayBuffer(10) // [x, y, previous_x, previous_y, bounce_flag_boolean]
-let mouse = new Int16Array(mouse_buffer)
-mouse.fill(1)
-console.log(mouse)
-let debounceTimeout = null  // the timeout container, used as a shared reference to be cleared to avoid overlapping / race conditions
-
-// reset debouncing flag in debounceTimeout
-function resetBounce(){ mouse[4] = 1 }
-
-// Listener for tracking mouse movements to apply rotational changes to the mesh
-body.addEventListener( 'mousemove', e => {
-    if (mouse[4] !== 0) {
-        mouse[4] = 0    // bounce flag
-        mouse[2] = mouse[0] 
-        mouse[3] = mouse[1]
-        mouse[0] = e.clientX
-        mouse[1] = e.clientY
-        console.log(mouse)
-        
-        clearTimeout(debounceTimeout)   // clear existing timeouts before setting the latest one
-        debounceTimeout = setTimeout( resetBounce, DEBOUNCER_DELAY )
-    }
-} )
-// --------- END MOUSE TRACKING ----------------------------------
-
 // Rendering datapoints to canvas from edges and verts
 function drawLineFromTo(a, b){ // a and b are arrays [x,y,z]
     ctx.beginPath()
@@ -76,7 +48,7 @@ function drawLineFromTo(a, b){ // a and b are arrays [x,y,z]
     ctx.stroke()
 }
 function drawVerts(x, y, scaleFactor){
-    let _dot_size = DOT_SIZE * (scaleFactor - DEPTH_SCALING_CONSTANT)
+    let _dot_size = DOT_SIZE * (scaleFactor - DEPTH_SCALER)
     if (_dot_size < MIN_DOT_SIZE) _dot_size = MIN_DOT_SIZE
     ctx.beginPath()
     ctx.arc(x*SIZE, y*SIZE, _dot_size, 0, 2 * Math.PI)
@@ -100,7 +72,7 @@ function setScaleFactor(z){
         const zRange = minmaxZ.max - minmaxZ.min
         const zNormalized = (z - minmaxZ.min !== 0) ? (z - minmaxZ.min) / zRange : BASIC_MINIMUM
         scaleFactor = 1 / (1 + zNormalized)
-        scaleFactor += DEPTH_SCALING_CONSTANT
+        scaleFactor += DEPTH_SCALER
     }
     return scaleFactor
 }
@@ -125,12 +97,12 @@ class BufferedData{
     // returns HTML canvas-friendly integer value
     getX(scaleFactor){
         let xValue = this._tmp[0] || this.view[0]
-        this.computed_view[0] = Math.round(xValue * INTEGER_CONVERSION_SCALE_FACTOR * scaleFactor)
+        this.computed_view[0] = Math.round(xValue * INT_CONVERSION_SCALER * scaleFactor)
     }
     // returns HTML canvas-friendly integer value
     getY(scaleFactor){
         let yValue = this._tmp[1] || this.view[1]
-        this.computed_view[1] = Math.round(yValue * INTEGER_CONVERSION_SCALE_FACTOR * scaleFactor)
+        this.computed_view[1] = Math.round(yValue * INT_CONVERSION_SCALER * scaleFactor)
     }
     // DEV NOTE: don't need getZ() right now
     // getZ(){ return }
@@ -218,6 +190,11 @@ function assign_updated_scale_factor(all_vertices){
 
 // ENTRY POINT
 async function main(){
+    // arc tangent can distinguish direction, unlike rise/run which is pinned to 180 degrees
+    const calculate_radians_angle = (x1, y1, x2, y2) => Math.atan2(y2-y1, x2-x1)
+    // Pythatgoras theorem for calculating distance
+    const calculate_distance = (x1, y1, x2, y2) => Math.sqrt((x2-x1) ** 2 + (y2-y1) ** 2)
+    
     const data = await get_model_data()
     const {vertices, edges} = data
     
@@ -226,6 +203,90 @@ async function main(){
     
     // this will be for applying rotations, translations, etc later...
     const all_edges = init_map_edges(edges, all_vertices) // array of all edges connecting 2 Vert objects
+
+
+
+    // SETUP MOUSE MOVEMENT TRACKING --------------------------------
+    function change_rotation_from_mouse(axis, amount){
+        console.log(`Axis: ${axis}\nAmount: ${amount}`)
+        switch (axis) {
+            case "x":
+                all_vertices.forEach( vert => vert.rotations[0] = amount )
+                break
+            case "y":
+                all_vertices.forEach( vert => vert.rotations[1] = amount )
+                break
+            case "z": // z rotations are based on the mouse angle between prev-current coordinates, so "amount" is a float32
+                all_vertices.forEach( vert => { 
+                    // apply rotation based on angle rather than distance...
+                })
+                break
+            default:
+                console.error(`change_rotation_from_mouse(${axis}, ${amount}) function produced an invalid case!!! This should never happen, check code for logical errors!`)
+        }
+    }
+    function calculate_rotation_amount(a, b){ 
+        let result = (a-b) / ROTATION_SENSITIVITY || 0
+        // check the rotation's direction by the sign but make sure it's capped by the maximum rotation speed allowed
+        if (result !== 0 && Math.abs(result) < MAX_ROTATION_SPEED){
+            result = (result < 0) ? -(result) : result
+        }
+        // 
+        else if(result > MAX_ROTATION_SPEED) {
+            result = MAX_ROTATION_SPEED
+        }
+        // no change or too small of a change, set rotation to stop
+        else if(result == 0 || result < BASIC_MINIMUM) {
+            result = 0
+        }
+
+        return result
+    }
+
+    // DEV NOTE: Int16 uses 2 bytes per element, so 4 coordinate elements and one bounce flag -> 5 * 2
+    const mouse_buffer = new ArrayBuffer(12) // [x, y, previous_x, previous_y, bounce_flag_boolean, mouse_change_distance]
+    let mouse = new Int16Array(mouse_buffer)
+    mouse.fill(1)
+    
+    // the timeout container, used as a shared reference to be cleared to avoid overlapping / race conditions
+    let debounceTimeout = null  
+
+    // reset debouncing flag in debounceTimeout
+    function resetBounce(){ mouse[4] = 1 }
+
+    // Get mouse movements with a debouncer so as not to clobber the engine with event callbacks.
+    const body = document.getElementsByTagName('body')[0]
+    
+    // Listener for tracking mouse movements to apply rotational changes to the mesh
+    body.addEventListener( 'mousemove', e => {
+        if (mouse[4] !== 0) {
+            mouse[4] = 0    // bounce flag
+            mouse[2] = mouse[0] // move previous x coordinates
+            mouse[3] = mouse[1] // move preivous y coordinates
+            mouse[0] = e.clientX // store new x coordinates
+            mouse[1] = e.clientY // store new y coordinates
+            // get DISTANCE between mouse coords for SPEED OF ROTATION
+            mouse[5] = calculate_distance(mouse[0], mouse[1], mouse[2], mouse[3])
+
+            // check for x rotation change based on new coordinates
+            if (mouse[0] !== mouse[2]) change_rotation_from_mouse("x", calculate_rotation_amount(mouse[0], mouse[2]))
+
+            // check for y rotation change based on new coordinates
+            if (mouse[1] !== mouse[3]) change_rotation_from_mouse("y", calculate_rotation_amount(mouse[1], mouse[3]))
+            
+            // get ANGLE of mouse coords change so we can ROTATEZ based on the ANGLE
+            let angle = calculate_radians_angle(mouse[0], mouse[1], mouse[2], mouse[3])
+            // change_rotation_from_mouse("z", angle)
+
+            console.log(mouse)
+            console.log(all_vertices[0])
+
+            // garbage collection
+            clearTimeout(debounceTimeout)   // clear existing timeouts before setting the latest one
+            debounceTimeout = setTimeout( resetBounce, DEBOUNCER_DELAY )
+        }
+    } )
+    // --------- END MOUSE TRACKING ----------------------------------
 
     // find range of depth to scale coordinates (smaller change for further away)
     function render(){
