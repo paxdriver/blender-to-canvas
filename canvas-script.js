@@ -228,7 +228,8 @@ async function main(){
                 if (mouse[5] > BASIC_MINIMUM) {
                     all_vertices.forEach( vert => {
                         // mouse[5] is distance of old and new mouse coords
-                        let _rotz = amount * Math.min(0.001, 1 / mouse[5])
+                        let _rotz = amount / Math.max(mouse[5], BASIC_MINIMUM) // avoids divide by zero
+                        // let _rotz = amount * Math.min(0.001, 1 / mouse[5])
                         if (_rotz > MAX_ROTATION_SPEED) _rotz = MAX_ROTATION_SPEED
                         else if (_rotz < -MAX_ROTATION_SPEED) _rotz = -MAX_ROTATION_SPEED
                         vert.rotations[2] = -_rotz
