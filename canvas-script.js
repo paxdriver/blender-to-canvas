@@ -8,22 +8,24 @@ async function get_model_data(){
 
 // DEV ONLY -------------------------  ANIMATION ON/OFF TOGGLE
 let animate = 1
-setTimeout( () => animate = 0, 23000)
+// setTimeout( () => animate = 0, 23000)
 // DEV ONLY -------------------------  ANIMATION ON/OFF TOGGLE
 
 // GLOBAL VARIABLES TO TWEAK AND ALTER DEPENDING ON USE CASE
 // const CAMERA_POSITION = [0, 0, 0]    // for later
 const BUFFER_SIZE = 4
 const [WIDTH, HEIGHT, SIZE] = [500, 500, 2]
-const BASIC_MINIMUM = 0.0000000000000001
+const BASIC_MINIMUM = 0.0005
             // DEV NOTE: consider making conversion scaler more dynamic, based on the canvas size or something...
 const INT_CONVERSION_SCALER = 10        // coords imported by Blender need to be scaled to pixel values
 const DEPTH_SCALER = 1.75               // kind of like aperture or depth of field
-const DOT_SIZE = 5                      // dots or points plotted on each Vert
+const DOT_SIZE = 4                      // dots or points plotted on each Vert
 const MIN_DOT_SIZE = 1                  // minimum dot radius, as they are scaled based on z values
 const DEBOUNCER_DELAY = 300             // delay in miliseconds between mouse movement events to recalculate the mesh
-const MAX_ROTATION_SPEED = 0.05         // this is the max speed of rotation per axis
-const ROTATION_SENSITIVITY = 10000        // this is the divisor applied to mouse coordinates to compute rotation speed
+const MAX_ROTATION_SPEED = 0.02         // this is the max speed of rotation per axis
+const ROTATION_SENSITIVITY = 1000        // this is the divisor applied to mouse coordinates to compute rotation speed
+const BASELINE_ROTATIONS = [0.0175, 0.0125, 0.02]        // when producing decaying rotations, this will be the levels they all gravitate back toward.
+
 // ---------------------------------------------------------
 let minmaxZ = {min: 1, max: 1}  // initialized value, will be updated when Vert class objects get created.
 // ---------------------------------------------------------
@@ -48,8 +50,9 @@ function drawLineFromTo(a, b){ // a and b are arrays [x,y,z]
     ctx.stroke()
 }
 function drawVerts(x, y, scaleFactor){
-    let _dot_size = DOT_SIZE * (scaleFactor - DEPTH_SCALER)
+    let _dot_size = DOT_SIZE * (scaleFactor - DEPTH_SCALER)// DEPTH_SCALER is added to the scaleFactor in setScaleFactor, so to get 1 / (1+zNormalized) back again we need to subtract DEPTH_SCALER again...
     if (_dot_size < MIN_DOT_SIZE) _dot_size = MIN_DOT_SIZE
+    else if (_dot_size > DOT_SIZE * 3) _dot_size = DOT_SIZE * 3
     ctx.beginPath()
     ctx.arc(x*SIZE, y*SIZE, _dot_size, 0, 2 * Math.PI)
     ctx.stroke()
@@ -70,7 +73,8 @@ function setScaleFactor(z){
     let scaleFactor = BASIC_MINIMUM
     if (minmaxZ.min !== minmaxZ.max) { // prevent divide by zero
         const zRange = minmaxZ.max - minmaxZ.min
-        const zNormalized = (z - minmaxZ.min !== 0) ? (z - minmaxZ.min) / zRange : BASIC_MINIMUM
+        const zNormalized = (z - minmaxZ.min !== 0) ? (z - minmaxZ.min) / zRange 
+            : (z < 0) ? -BASIC_MINIMUM : BASIC_MINIMUM
         scaleFactor = 1 / (1 + zNormalized)
         scaleFactor += DEPTH_SCALER
     }
@@ -90,8 +94,8 @@ class BufferedData{
     setView(x, y, z){ // Float values of coordinates from imported data
         this.view[0] = x
         this.view[1] = y
-        this.view[2] = z
-        this.rotations = [0.025, 0.04, 0.05]
+        this.view[2] = -z
+        this.rotations = BASELINE_ROTATIONS
         this.scaleFactor = setScaleFactor(z)
     }
     // returns HTML canvas-friendly integer value
@@ -143,7 +147,7 @@ class Vert extends BufferedData {
     constructor(x, y, z){
         super(BUFFER_SIZE * 3)
         this.setView(x,y,z)
-        this.scaleFactor = (() => setScaleFactor(z))
+        this.scaleFactor = setScaleFactor(z)
         this.computed_buffer = new ArrayBuffer(2 * Int32Array.BYTES_PER_ELEMENT)
         this.computed_view = new Int32Array(this.computed_buffer) // [x, y] integer coordinates
     }
@@ -204,44 +208,55 @@ async function main(){
     // this will be for applying rotations, translations, etc later...
     const all_edges = init_map_edges(edges, all_vertices) // array of all edges connecting 2 Vert objects
 
-
-
     // SETUP MOUSE MOVEMENT TRACKING --------------------------------
     function change_rotation_from_mouse(axis, amount){
         console.log(`Axis: ${axis}\nAmount: ${amount}`)
         switch (axis) {
             case "x":
-                all_vertices.forEach( vert => vert.rotations[0] = amount )
+                all_vertices.forEach( vert => {
+                    vert.rotations[0] = amount
+                } )
                 break
             case "y":
-                all_vertices.forEach( vert => vert.rotations[1] = amount )
+                all_vertices.forEach( vert => {
+                    vert.rotations[1] = amount
+                    // vert.rotations[1] = (amount < 0) ? amount : -amount
+                } )
                 break
             case "z": // z rotations are based on the mouse angle between prev-current coordinates, so "amount" is a float32
-                all_vertices.forEach( vert => { 
-                    // apply rotation based on angle rather than distance...
-                })
+                console.log(`mouse[5]: ${mouse[5]}`)
+                if (mouse[5] > BASIC_MINIMUM) {
+                    all_vertices.forEach( vert => {
+                        // mouse[5] is distance of old and new mouse coords
+                        let _rotz = amount * Math.min(0.001, 1 / mouse[5])
+                        if (_rotz > MAX_ROTATION_SPEED) _rotz = MAX_ROTATION_SPEED
+                        else if (_rotz < -MAX_ROTATION_SPEED) _rotz = -MAX_ROTATION_SPEED
+                        vert.rotations[2] = -_rotz
+                        console.log(vert.rotations[2])
+                    })
+                } 
                 break
             default:
                 console.error(`change_rotation_from_mouse(${axis}, ${amount}) function produced an invalid case!!! This should never happen, check code for logical errors!`)
         }
     }
-    function calculate_rotation_amount(a, b){ 
-        let result = (a-b) / ROTATION_SENSITIVITY || 0
-        // check the rotation's direction by the sign but make sure it's capped by the maximum rotation speed allowed
-        if (result !== 0 && Math.abs(result) < MAX_ROTATION_SPEED){
-            result = (result < 0) ? -(result) : result
-        }
-        // 
-        else if(result > MAX_ROTATION_SPEED) {
-            result = MAX_ROTATION_SPEED
-        }
-        // no change or too small of a change, set rotation to stop
-        else if(result == 0 || result < BASIC_MINIMUM) {
-            result = 0
-        }
 
+    
+    function calculate_rotation_amount(a, b){ 
+        console.log(a, b, a-b)
+
+        let result = (a-b) / ROTATION_SENSITIVITY
+        // check the rotation's direction by the sign but make sure it's capped by the maximum rotation speed allowed
+        console.log(result)
+        if (result < -MAX_ROTATION_SPEED) result = -MAX_ROTATION_SPEED 
+        // cap the max
+        else if(result > MAX_ROTATION_SPEED) result = MAX_ROTATION_SPEED
+        // set the min - no change or too small of a change, set rotation to stop
+        else if(Math.abs(result) < BASIC_MINIMUM) result = 0
+        console.log(result)
         return result
     }
+
 
     // DEV NOTE: Int16 uses 2 bytes per element, so 4 coordinate elements and one bounce flag -> 5 * 2
     const mouse_buffer = new ArrayBuffer(12) // [x, y, previous_x, previous_y, bounce_flag_boolean, mouse_change_distance]
@@ -276,7 +291,8 @@ async function main(){
             
             // get ANGLE of mouse coords change so we can ROTATEZ based on the ANGLE
             let angle = calculate_radians_angle(mouse[0], mouse[1], mouse[2], mouse[3])
-            // change_rotation_from_mouse("z", angle)
+                // provide the angle in radians, and the distance the mouse travelled to scale the speed of the rotation
+            if (angle !== 0) change_rotation_from_mouse("z", angle)
 
             console.log(mouse)
             console.log(all_vertices[0])
