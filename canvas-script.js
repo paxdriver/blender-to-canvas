@@ -15,7 +15,7 @@ let animate = 1
 // const CAMERA_POSITION = [0, 0, 0]    // for later
 const BUFFER_SIZE = 4
 const [WIDTH, HEIGHT, SIZE] = [500, 500, 2]
-const BASIC_MINIMUM = 0.0005
+const BASIC_MINIMUM = 0.0000001
             // DEV NOTE: consider making conversion scaler more dynamic, based on the canvas size or something...
 const INT_CONVERSION_SCALER = 10        // coords imported by Blender need to be scaled to pixel values
 const DEPTH_SCALER = 1.75               // kind of like aperture or depth of field
@@ -228,8 +228,8 @@ async function main(){
                 if (mouse[5] > BASIC_MINIMUM) {
                     all_vertices.forEach( vert => {
                         // mouse[5] is distance of old and new mouse coords
-                        let _rotz = amount / Math.max(mouse[5], BASIC_MINIMUM) // avoids divide by zero
-                        // let _rotz = amount * Math.min(0.001, 1 / mouse[5])
+                        // let _rotz = amount / Math.max(mouse[5], BASIC_MINIMUM) // avoids divide by zero
+                        let _rotz = amount * Math.max(BASIC_MINIMUM, 1 / (mouse[5]*DEPTH_SCALER))
                         if (_rotz > MAX_ROTATION_SPEED) _rotz = MAX_ROTATION_SPEED
                         else if (_rotz < -MAX_ROTATION_SPEED) _rotz = -MAX_ROTATION_SPEED
                         vert.rotations[2] = -_rotz
