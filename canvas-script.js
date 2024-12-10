@@ -15,9 +15,9 @@ let animate = 1
 // const CAMERA_POSITION = [0, 0, 0]    // for later
 let CAMERA_DISTANCE = 1                 // init value, this is updated in setScaleFactor()
 const BUFFER_SIZE = 4
-const MODEL_POSITION_ADJUSTMENT = [200, 250]    // if the imported model is clipping or not positioned exactly right, use this to apply [x, y] pixel offsets to the canvas of the model being imported
-const MODEL_SCALER = 2                 // if your model doesn't fit nicely in the frame, use this to scale it up or down. Values smaller than 1 will shrink the mesh, and values greater than 1 will scale larger.
-const [WIDTH, HEIGHT, SIZE] = [750, 600, 2 * MODEL_SCALER]
+const MODEL_POSITION_ADJUSTMENT = [100, 100]    // if the imported model is clipping or not positioned exactly right, use this to apply [x, y] pixel offsets to the canvas of the model being imported
+const MODEL_SCALER = 0.5                 // if your model doesn't fit nicely in the frame, use this to scale it up or down. Values smaller than 1 will shrink the mesh, and values greater than 1 will scale larger.
+const [WIDTH, HEIGHT, SIZE] = [250, 200, 2 * MODEL_SCALER]
 const BASIC_MINIMUM = 0.000001
             // DEV NOTE: consider making conversion scaler more dynamic, based on the canvas size or something...
 const INT_CONVERSION_SCALER = 100        // coords imported by Blender need to be scaled to pixel values
