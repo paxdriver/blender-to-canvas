@@ -4,6 +4,7 @@ Using model data from Blender to render 3D it in canvas. It's important to note 
 
 I'm considering making another version of this once I'm done tinkering with it so that I can compare performance between the regular javascript memory allocation vs the contiguous memory allocation, and then also compare with THREE.js and using a math library to perform rotations and transformation using a math library which has matrix operations built-in to see if there's measurable benefits to arraybuffers with simple and complex meshes. Expect this project to branch, but it's just for fun. Please don't even consider putting something like this in production lol.
 
+[![Video Title](https://img.youtube.com/vi/4K0B8xxW46g/0.jpg)](https://www.youtube.com/watch?v=4K0B8xxW46g)
 
 PLATFORM: 'Linux-5.19.0-50-generic-x86_64-with-glibc2.35'
 
