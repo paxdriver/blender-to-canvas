@@ -14,7 +14,6 @@ const calculate_radians_angle = (x1, y1, x2, y2) => {
         console.error("ATAN2 got a bad value!!!!")
         console.log(arguments)
         result = 0
-        debugger
     }
     return result
 }
@@ -47,10 +46,11 @@ const BASIC_MINIMUM = 0.000001
             // DEV NOTE: consider making conversion scaler more dynamic, based on the canvas size or something...
 const INT_CONVERSION_SCALER = 100        // coords imported by Blender need to be scaled to pixel values
 const DEPTH_SCALER = 2                  // kind of like aperture or depth of field
-const DEBOUNCER_DELAY = 125             // delay in miliseconds between mouse movement events to recalculate the mesh
-const MAX_ROTATION_SPEED = 0.25         // this is the max speed of rotation per axis
-const ROTATION_SENSITIVITY = 0.0002        // this is the divisor applied to mouse coordinates to compute rotation speed
-const BASELINE_ROTATIONS = [0.0175, 0.0125, 0.0075]        // when producing decaying rotations, this will be the levels they all gravitate back toward.
+const DEBOUNCER_DELAY = 75             // delay in miliseconds between mouse movement events to recalculate the mesh
+const MAX_ROTATION_SPEED = 0.05         // this is the max speed of rotation per axis
+const ROTATION_SENSITIVITY = 0.002        // this is the divisor applied to mouse coordinates to compute rotation speed
+const BASELINE_ROTATIONS = [0.0125, 0.02, 0.050]        // when producing decaying rotations, this will be the levels they all gravitate back toward.
+// const BASELINE_ROTATIONS = [0.0175, 0.0125, 0.0075]        // when producing decaying rotations, this will be the levels they all gravitate back toward.
 
 // ---------------------------------------------------------
 let minmaxZ = {min: 1, max: 1}  // initialized value, will be updated when Vert class objects get created.
@@ -78,47 +78,65 @@ BASELINE_ROTATIONS.forEach( (v, i) => ROTATIONS[i] = v )
 // DEV NOTE: Int16 uses 2 bytes per element, so 4 coordinate elements and one bounce flag -> 5 * 2
 const mouse_buffer = new ArrayBuffer(12) // [x, y, previous_x, previous_y, bounce_flag_boolean, mouse_change_distance]
 let mouse = new Int16Array(mouse_buffer)
-mouse.fill(2)
+mouse.fill(1)
+mouse[5] = 10
 
-// const DAMPEN_ROTATION = (current_amount, distance=1) => current_amount - (distance / BASIC_MINIMUM)
+// THE DAMPENING FUNCTION ITSELF (reduce rotation speed incrementally based on the mouse displacement and current rotation value)
+const DAMPEN_ROTATION = current_rotation => {
+    
+    // console.log(`CURRENT_ROTATION: ${current_rotation}`)
+    let abs_current_rotation = Math.abs(current_rotation)
+    if (current_rotation == 0 || abs_current_rotation < BASIC_MINIMUM*10) return 0
+    // console.log(`distance is: ${mouse[5]}`)
+    let result
+    if (current_rotation > 0) {
+        result = current_rotation - ROTATION_SENSITIVITY / 10
+        // console.log(`new rotation is: ${result}`)
+        return result
+    }
+    else if (current_rotation < 0){
+        result = current_rotation + ROTATION_SENSITIVITY / 10
+        // console.log(`new rotation is: ${result}`)
+        return result
+    }
+    else return 0
+}
 
-// let result = current_amount - ( distance * (1 / (1 + MAX_ROTATION_SPEED)) )
-// let result = current_amount * (mouse[5] * (1 / (1 + MAX_ROTATION_SPEED) ) * (distance * 100))
+function dampen_z(current_rotation){
+    // debugger
+
+    let result = DAMPEN_ROTATION(current_rotation)
+    const abs_current_rotation = Math.abs(result)
+    if (current_rotation == 0 || abs_current_rotation < BASIC_MINIMUM) return 0
+    
+    if (abs_current_rotation < Math.PI*2){
+        return result
+    }
+    else {
+        if (result > 0) result -= Math.PI*2
+        else result += Math.PI*2
+        return result
+    }
+}
+
+function set_if_below_threshold(val){
+    if (Math.abs(val) < BASIC_MINIMUM * 1000) return 0
+    else return val
+}
 
 // THE FUNCTION WE APPLY TO GET NEW ROTATION AMOUNTS
 function dampen_all_rotations(){
-    // THE DAMPENING FUNCTION ITSELF (reduce rotation speed incrementally based on the mouse displacement and current rotation value)
-    const DAMPEN_ROTATION = current_rotation => {
-        console.log(`CURRENT_ROTATION: ${current_rotation}`)
-        if (current_rotation == 0 || Math.abs(current_rotation) < BASIC_MINIMUM) return 0
+    ROTATIONS[0] = set_if_below_threshold(ROTATIONS[0])
+    ROTATIONS[1] = set_if_below_threshold(ROTATIONS[1])
+    ROTATIONS[2] = set_if_below_threshold(ROTATIONS[2])
+    
+    if (Math.abs(ROTATIONS[0]) > 0) ROTATIONS[0] = DAMPEN_ROTATION(ROTATIONS[0]) // TO FIX
+    if (Math.abs(ROTATIONS[1]) > 0) ROTATIONS[1] = DAMPEN_ROTATION(ROTATIONS[1])
 
-        // if (mouse[5] > 0){
-            console.log(`distance is: ${mouse[5]}`)
-
-            let result
-            if (current_rotation > 0) {
-                result = current_rotation - 0.0001
-                // result = (current_rotation - (current_rotation + BASIC_MINIMUM/(ROTATION_SENSITIVITY*mouse[5])) )
-                // console.log(`new rotation is: ${result}`)
-                mouse[5]--
-                return result
-            }
-            else if (current_rotation < 0){
-                result = current_rotation + 0.0001
-                // result = (current_rotation + (current_rotation + BASIC_MINIMUM/(ROTATION_SENSITIVITY*mouse[5])) )
-                // console.log(`new rotation is: ${result}`)
-                mouse[5]--
-                return result
-            }
-        // }
-        else return 0
-    }
-
-    if (mouse[5] && mouse[5] > 1) {
-        if (Math.abs(ROTATIONS[0]) > 0) ROTATIONS[0] = DAMPEN_ROTATION(ROTATIONS[0]) // TO FIX
-        if (Math.abs(ROTATIONS[1]) > 0) ROTATIONS[1] = DAMPEN_ROTATION(ROTATIONS[1]) // TO FIX
-        if (Math.abs(ROTATIONS[2]) > 0) ROTATIONS[2] = DAMPEN_ROTATION(ROTATIONS[2]) // TO FIX!!! 
-    }
+    // if (mouse[5] && mouse[5] > 2) {
+    if (Math.abs(ROTATIONS[2]) > 0) ROTATIONS[2] = dampen_z(ROTATIONS[2])
+        // debugger
+    // }
 }
 
 
@@ -132,15 +150,36 @@ const resetBounce = () => mouse[4] = 1
 function calculate_rotation_amount(a, b){ 
     // let result = (a-b) * (ROTATION_SENSITIVITY)
     let result = a-b
-    if (result !== 0) result = result / ( 1 + a / b)
-    // let result = (a-b) * (ROTATION_SENSITIVITY*DEPTH_SCALER)
+    // if (result !== 0) result = result / (1 + (a / b))
+    if (result !== 0) result = result / (1 + (a / b))
+    else return 0
+    
+    result = result * (ROTATION_SENSITIVITY * 200)
     // check the rotation's direction by the sign but make sure it's capped by the maximum rotation speed allowed
     if (result < -MAX_ROTATION_SPEED) result = -MAX_ROTATION_SPEED 
     // cap the max
     else if(result > MAX_ROTATION_SPEED) result = MAX_ROTATION_SPEED
     // set the min - no change or too small of a change, set rotation to stop
-    else if(Math.abs(result) < BASIC_MINIMUM) result = 0
+    else if(set_if_below_threshold(result)) result = 0
     return result
+}
+
+function compute_new_z_angle(rads) {
+    // true is positive radians, false is negative for direction
+    // const spin_direction = (calculate_radians_angle(mouse[0], mouse[1], mouse[2], mouse[3]) > 0) ? true : false
+    const spin_direction = (rads > 0) ? true : false
+    
+    let spd = (mouse[5] > 10) ? mouse[5] * ROTATION_SENSITIVITY : ROTATION_SENSITIVITY
+    if (spd > MAX_ROTATION_SPEED) spd = MAX_ROTATION_SPEED
+    if (Math.abs(rads) + spd > MAX_ROTATION_SPEED) {
+        if (spin_direction) return MAX_ROTATION_SPEED - spd
+        else return -MAX_ROTATION_SPEED - spd
+    }
+    else {
+        if (spin_direction) return rads - spd
+        else return rads + spd
+    }
+
 }
 
 // Listener for tracking mouse movements to apply rotational changes to the mesh
@@ -163,16 +202,19 @@ canvas.addEventListener( 'mousemove', e => {
 
         // check for x rotation change based on new coordinates (returns signed value for direction)
         if (mouse[0] !== mouse[2]) ROTATIONS[0] = calculate_rotation_amount(mouse[0], mouse[2])
-
-        // else if (Math.abs(ROTATIONS[0]) < BASIC_MINIMUM) ROTATIONS[0] = 0
     
         // check for y rotation change based on new coordinates (returns signed value for direction)
         if (mouse[1] !== mouse[3]) ROTATIONS[1] = calculate_rotation_amount(mouse[1], mouse[3])
         // else if (Math.abs(ROTATIONS[1]) < BASIC_MINIMUM) ROTATIONS[1] = 0
-    
+        
         // DEV NOTE: ANGLE of mouse displacement is used to ROTATEZ rather than x or y distance from previous mark
         // provide the angle in radians, and the distance the mouse travelled to scale the speed of the rotation
-        ROTATIONS[2] = calculate_radians_angle(mouse[0], mouse[1], mouse[2], mouse[3])
+        if (mouse[2] !== mouse[3]){
+            // true is positive radians, false is negative for direction
+            ROTATIONS[2] = compute_new_z_angle(calculate_radians_angle(mouse[0], mouse[1], mouse[2], mouse[3]))
+        }
+        
+        // ROTATIONS[2] = calculate_radians_angle(mouse[0], mouse[1], mouse[2], mouse[3]) / mouse[5] || 0
 
         // else if (Math.abs(ROTATIONS[2]) < BASIC_MINIMUM) ROTATIONS[2] = 0
 
@@ -234,11 +276,13 @@ class BufferedData{
     getX(scaleFactor){
         let xValue = this._tmp[0] || this.view[0]
         this.computed_view[0] = Math.round(xValue * INT_CONVERSION_SCALER * scaleFactor)
+        // this.computed_view[0] = Math.round(xValue * INT_CONVERSION_SCALER * scaleFactor)
     }
     // returns HTML canvas-friendly integer value
     getY(scaleFactor){
         let yValue = this._tmp[1] || this.view[1]
         this.computed_view[1] = Math.round(yValue * INT_CONVERSION_SCALER * scaleFactor)
+        // this.computed_view[1] = Math.round(yValue * INT_CONVERSION_SCALER * scaleFactor)
     }
     updateCoordsWithDepthFactor(){
         this.getX(this.scaleFactor)
@@ -263,18 +307,15 @@ class BufferedData{
 
     } // Applies new X,Y coordinate based on Y axis rotation amount & recalc Vert's scaleFactor
     rotateZ(angle){ 
-
-        // FIX THIS!!! ROTATION ANGLE NEEDS AN ALGORITHM TO GET SPEED FROM MOUSE DISTANCE
-
+        let _angle = compute_new_z_angle(angle)
         let xValue = this._tmp[0] || this.view[0]
         let yValue = this._tmp[1] || this.view[1]
-        console.log(`ROTATEZ's angle: ${angle}`)
-        console.log(`ROTATEZ's coordinates: ${this._tmp[0]}, ${this._tmp[1]}`)
-        this._tmp[0] = (xValue * Math.cos(angle)) - (yValue * Math.sin(angle))
-        this._tmp[1] = (xValue * Math.sin(angle)) + (yValue * Math.cos(angle))
-        console.log(`ROTATEZ's coordinates: ${this._tmp[0]}, ${this._tmp[1]}`)
-        debugger
-
+        // console.log(`xValue: ${xValue}`)
+        // console.log(`yValue: ${yValue}`)
+        // console.log(this)
+        this._tmp[0] = (xValue * Math.cos(_angle)) - (yValue * Math.sin(_angle))
+        this._tmp[1] = (xValue * Math.sin(_angle)) + (yValue * Math.cos(_angle))
+        // scaleFactor doesn't change on this axis because it's the axis that doesn't move when rotated here so z isn't going to be affected by manipulations to x and y
     }
     applyRotations(){ // apply all rotations, but only call the methods with rotations that need to be applied (ie: non-zero)
         if (ROTATIONS[0] !== 0) { this.rotateX(ROTATIONS[0]) }
