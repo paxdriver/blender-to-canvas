@@ -46,8 +46,8 @@ const BASIC_MINIMUM = 0.000001
             // DEV NOTE: consider making conversion scaler more dynamic, based on the canvas size or something...
 const INT_CONVERSION_SCALER = 100        // coords imported by Blender need to be scaled to pixel values
 const DEBOUNCER_DELAY = 50             // delay in miliseconds between mouse movement events to recalculate the mesh
-const MAX_ROTATION_SPEED = 0.045         // this is the max speed of rotation per axis
-const MAX_MOUSE_DISTANCE = 150          // the max distance used to apply rotation on the z-axis
+const MAX_ROTATION_SPEED = 0.05         // this is the max speed of rotation per axis
+const MAX_MOUSE_DISTANCE = 100          // the max distance used to apply rotation on the z-axis
 const ROTATION_SENSITIVITY = 0.005        // this is the divisor applied to mouse coordinates to compute rotation speed. Consider more like adding friction to the animation and responsiveness of the mouse interactions
 const BASELINE_ROTATIONS = [0.0, 0.0, 0.0]        // when producing decaying rotations, this will be the levels they all gravitate back toward.
 
